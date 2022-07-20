@@ -1,0 +1,3 @@
+aws:
+  region:
+    static: sa-east-1
