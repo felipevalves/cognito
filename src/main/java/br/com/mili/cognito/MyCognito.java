@@ -106,11 +106,6 @@ public class MyCognito {
                 .clientId(clientId)
                 .authFlow(AuthFlowType.USER_PASSWORD_AUTH)
                 .authParameters(authParameters)
-//                .authFlow(AuthFlowType.USER_PASSWORD_AUTH)
-//                .authFlow(AuthFlowType.REFRESH_TOKEN_AUTH)
-//                .authParameters(Map.of(AuthFlowType.USER_SRP_AUTH.toString(), "felipe.cognito",
-//                        AuthFlowType.USER_PASSWORD_AUTH.toString(), "Asdf234**",
-//                        AuthFlowType.REFRESH_TOKEN.toString(), "5"))
                 .build();
         InitiateAuthResponse response = client.initiateAuth(request);
 
