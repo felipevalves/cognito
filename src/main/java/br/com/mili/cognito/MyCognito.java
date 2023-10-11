@@ -7,8 +7,12 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.cognitoidentityprovider.CognitoIdentityProviderClient;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.*;
 
-import java.util.HashMap;
-import java.util.Map;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.util.*;
 
 @Service
 public class MyCognito {
@@ -19,7 +23,7 @@ public class MyCognito {
     public CognitoIdentityProviderClient getClient() {
         return CognitoIdentityProviderClient.builder()
                 .region(Region.of(region))
-                .credentialsProvider(ProfileCredentialsProvider.create("cognito"))
+                .credentialsProvider(ProfileCredentialsProvider.create("COGNITO-PROMOCAO"))
                 .build();
     }
 
@@ -88,19 +92,19 @@ public class MyCognito {
     /**
      *
      * Usado para fazer a autenticação.
-     * Na primeira vez que for utlizado, é retornado um session e então é necessário executar RespondToAuthChallengeRequest
+     * Na primeira vez que for utlizado, é retornado um session e então é necessário executar RespondToAuthChallengeRequest, quando for necessário alterar senha
      * @param client
      * @param clientId
-     * @param username
      * @param pass
      */
-    public InitiateAuthResponse initateAuth(CognitoIdentityProviderClient client, String clientId, String username, String pass) {
+    public InitiateAuthResponse initateAuth(CognitoIdentityProviderClient client, String clientId, String email, String pass) {
 
         System.out.println("=== initateAuth ===");
 
         Map<String,String> authParameters = new HashMap<>();
-        authParameters.put("USERNAME", username);
+        authParameters.put("USERNAME", email);
         authParameters.put("PASSWORD", pass);
+        authParameters.put("SECRET_HASH", calculateSecretHash(email, clientId, "155u0r31d5903m54mb8n5an8lh510i63gelbq3vnosavmlvnrlav"));
 
         InitiateAuthRequest request = InitiateAuthRequest.builder()
                 .clientId(clientId)
@@ -110,6 +114,11 @@ public class MyCognito {
         InitiateAuthResponse response = client.initiateAuth(request);
 
         System.out.println("accessToken: " + ((response.authenticationResult() == null)? "" : response.authenticationResult().accessToken()));
+        System.out.println("idToken: " + ((response.authenticationResult() == null)? "" : response.authenticationResult().idToken()));
+        System.out.println("refreshToken: " + ((response.authenticationResult() == null)? "" : response.authenticationResult().refreshToken()));
+        System.out.println("result: " + ((response.authenticationResult() == null)? "" : response.authenticationResult().toString()));
+
+
 
         System.out.println("session: " + response.session());
         return response;
@@ -154,6 +163,109 @@ public class MyCognito {
         System.out.println(response.sdkHttpResponse().statusCode());
 
 
+    }
+
+    /**
+     * Para cadastrar novo usuario
+     *
+     * @return
+     */
+    public SignUpResponse signUp(CognitoIdentityProviderClient identityProviderClient, String clientId,
+                                 String email,
+                                 String name,
+                                 String lastName,
+                                 String password) {
+
+
+        List<AttributeType> userAttrsList = new ArrayList<>();
+        userAttrsList.add(AttributeType.builder()
+                .name("email")
+                .value(email)
+                .build());
+
+        userAttrsList.add(AttributeType.builder()
+                .name("given_name")
+                .value(name)
+                .build());
+
+        userAttrsList.add(AttributeType.builder()
+                .name("family_name")
+                .value(name)
+                .build());
+        try {
+            SignUpRequest signUpRequest = SignUpRequest.builder()
+                    .secretHash(calculateSecretHash(email, clientId, "155u0r31d5903m54mb8n5an8lh510i63gelbq3vnosavmlvnrlav"))
+                    .userAttributes(userAttrsList)
+                    .username(email)
+                    .clientId(clientId)
+                    .password(password)
+                    .build();
+
+            SignUpResponse response = identityProviderClient.signUp(signUpRequest);
+            System.out.println("User has been signed up ");
+            return response;
+
+        } catch(CognitoIdentityProviderException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    /**
+     * Apos cadastrar o usuário é necessário confirmar o cadastro com o código que vai por email
+     *
+     * @return
+     */
+    public ConfirmSignUpResponse confirmationSignUp(CognitoIdentityProviderClient identityProviderClient, String clientId, String email, String verificationCode) {
+        try {
+            ConfirmSignUpRequest confirmSignUpRequest = ConfirmSignUpRequest.builder()
+                    .secretHash(calculateSecretHash(email, clientId, "155u0r31d5903m54mb8n5an8lh510i63gelbq3vnosavmlvnrlav"))
+                    .clientId(clientId)
+                    .username(email)
+                    .confirmationCode(verificationCode)
+                    .build();
+
+            ConfirmSignUpResponse response = identityProviderClient.confirmSignUp(confirmSignUpRequest);
+            System.out.println("User has been confirmed");
+            return response;
+        } catch (CognitoIdentityProviderException e) {
+            e.printStackTrace();
+        }
+        return null;
+
+    }
+
+    public ResendConfirmationCodeResponse resendConfirmationCode(CognitoIdentityProviderClient identityProviderClient, String clientId, String email) {
+        try {
+            ResendConfirmationCodeRequest codeRequest = ResendConfirmationCodeRequest.builder()
+                    .secretHash(calculateSecretHash(email, clientId, "155u0r31d5903m54mb8n5an8lh510i63gelbq3vnosavmlvnrlav"))
+                    .clientId(clientId)
+                    .username(email)
+                    .build();
+
+            return identityProviderClient.resendConfirmationCode(codeRequest);
+
+
+        } catch(CognitoIdentityProviderException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+
+
+    public String calculateSecretHash(String username, String clientId, String clientSecret) {
+        try {
+            String message = username + clientId;
+            Mac sha256HMAC = Mac.getInstance("HmacSHA256");
+            SecretKeySpec secretKey = new SecretKeySpec(clientSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+            sha256HMAC.init(secretKey);
+            byte[] hashBytes = sha256HMAC.doFinal(message.getBytes(StandardCharsets.UTF_8));
+            return Base64.getEncoder().encodeToString(hashBytes);
+        } catch (NoSuchAlgorithmException | InvalidKeyException e) {
+            e.printStackTrace();
+            return null;
+        }
     }
 
 
